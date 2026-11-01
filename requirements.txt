@@ -1,0 +1,9 @@
+# Core Cryptographic Library (AES-256-GCM, PBKDF2)
+cryptography>=41.0.0
+
+# GUI Enhancements (Optional modern styling; standard Tkinter is used as fallback)
+customtkinter>=5.2.0
+
+# Packaging (For building standalone Windows executable)
+pyinstaller>=6.0.0
+

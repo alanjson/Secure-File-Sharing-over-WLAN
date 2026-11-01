@@ -1,0 +1,21 @@
+{
+  "name": "secure-file-sharing-wlan",
+  "version": "1.0.0",
+  "description": "Secure File Sharing over WLAN — AES-256-GCM, SHA-256, PBKDF2 by Alan Jaison",
+  "main": "api/share.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "vercel dev"
+  },
+  "keywords": [
+    "wlan",
+    "secure-file-transfer",
+    "aes-256-gcm",
+    "sha-256",
+    "client-server",
+    "alan-jaison"
+  ],
+  "author": "ALAN JAISON",
+  "license": "Apache-2.0"
+}
+

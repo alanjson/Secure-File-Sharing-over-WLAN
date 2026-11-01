@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.spec
+!Secure-File-Sharing-WLAN.spec
+
+# Builds & Virtual Envs
+dist/
+build/
+venv/
+.env
+
+# Received transfer testing files
+received_files/
+test_run_dir/
+test_network_received/
+
+# Node
+node_modules/
+.vercel
+

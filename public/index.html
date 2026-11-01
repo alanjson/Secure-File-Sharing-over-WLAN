@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Secure File Sharing over WLAN — Alan Jaison</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="icon" href="favicon.ico" type="image/x-icon">
+</head>
+<body>
+  <div class="app-wrapper">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="brand">
+        <div class="brand-icon">🛡️</div>
+        <div>
+          <h1>Secure File Sharing over WLAN</h1>
+          <p class="subtitle">Client-Server Architecture • AES-256-GCM • SHA-256 Integrity • <strong>ALAN JAISON</strong></p>
+        </div>
+      </div>
+      <div class="header-badges">
+        <span class="badge badge-accent">AES-256-GCM</span>
+        <span class="badge badge-success">SHA-256</span>
+        <span class="badge badge-muted" id="wlanStatusBadge">📡 WLAN Ready</span>
+      </div>
+    </header>
+
+    <!-- Navigation Tabs -->
+    <nav class="nav-tabs">
+      <button class="nav-tab active" data-tab="send">📤 Send File (Client)</button>
+      <button class="nav-tab" data-tab="receive">📥 Receive File (Server)</button>
+      <button class="nav-tab" data-tab="integrity">🔍 SHA-256 Verifier</button>
+      <button class="nav-tab" data-tab="abstract">✦ Project Abstract</button>
+    </nav>
+
+    <!-- Main Content Area -->
+    <main class="main-content">
+      
+      <!-- TAB 1: SEND FILE -->
+      <section id="tab-send" class="tab-pane active">
+        <div class="card">
+          <div class="card-header">
+            <h2>1. Select File for Secure Transfer</h2>
+            <p>Select any file to encrypt with AES-256-GCM and transmit over WLAN.</p>
+          </div>
+
+          <!-- Drag and Drop Zone -->
+          <div class="dropzone" id="sendDropzone">
+            <input type="file" id="fileInput" class="file-input-hidden">
+            <div class="dropzone-content">
+              <div class="drop-icon">📁</div>
+              <h3>Drag & Drop your file here</h3>
+              <p>or <button type="button" class="btn-link" id="btnBrowse">browse files</button> from your device</p>
+              <div id="fileSelectedInfo" class="file-info-badge" style="display: none;">
+                <span id="selectedFileName">file.txt</span>
+                <span id="selectedFileSize" class="size-pill">0 KB</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Step 2: Authentication & Encryption -->
+          <div class="form-section">
+            <div class="card-header" style="padding-left:0; padding-right:0;">
+              <h2>2. Authentication & AES-256-GCM Key</h2>
+              <p>Set a passphrase shared with the receiver. Key is derived via PBKDF2-HMAC-SHA256.</p>
+            </div>
+            
+            <div class="input-group">
+              <label for="sendPassphrase">Authentication Key / Passphrase:</label>
+              <div class="input-with-button">
+                <input type="password" id="sendPassphrase" placeholder="Enter transfer passphrase..." value="AlanJaisonWLAN2026">
+                <button type="button" class="btn-ghost" id="toggleSendPass">👁</button>
+                <button type="button" class="btn-ghost" id="genPassBtn" title="Generate Random Key">⚡ Generate</button>
+              </div>
+            </div>
+
+            <!-- SHA-256 Preview -->
+            <div class="hash-preview-box" id="hashPreviewBox" style="display: none;">
+              <span class="hash-label">Original SHA-256 Hash:</span>
+              <code id="originalShaPreview" class="hash-code">Computing...</code>
+            </div>
+
+            <button type="button" class="btn-primary btn-block" id="btnEncryptAndSend" disabled>
+              🔒 Encrypt (AES-256-GCM) & Transmit File
+            </button>
+          </div>
+
+          <!-- Step 3: Transfer Monitoring & Confirmation -->
+          <div id="transferMonitorSection" class="monitor-section" style="display: none;">
+            <h3>3. Transfer Monitoring & Delivery Confirmation</h3>
+            
+            <div class="progress-container">
+              <div class="progress-bar-track">
+                <div class="progress-bar-fill" id="sendProgressBar" style="width: 0%;"></div>
+              </div>
+              <div class="progress-labels">
+                <span id="sendProgressStatus">Preparing encryption...</span>
+                <span id="sendProgressPercent">0%</span>
+              </div>
+            </div>
+
+            <!-- Result Card -->
+            <div id="sendResultCard" class="result-card success" style="display: none;">
+              <div class="result-header">
+                <span class="result-icon">✓</span>
+                <div>
+                  <h4>Delivery Confirmed: File Transmitted & Verified</h4>
+                  <p>Encrypted via AES-256-GCM • SHA-256 Hash Match Verified</p>
+                </div>
+              </div>
+              <div class="result-details">
+                <div class="detail-row">
+                  <span>Transfer Code:</span>
+                  <strong class="code-pill" id="shareCodeDisplay">123456</strong>
+                </div>
+                <div class="detail-row">
+                  <span>Direct Link:</span>
+                  <a href="#" id="directShareLink" target="_blank" class="share-link">Copy link</a>
+                </div>
+                <div class="detail-row">
+                  <span>Original SHA-256:</span>
+                  <code id="resultShaDisplay" class="hash-code-sm"></code>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 2: RECEIVE FILE -->
+      <section id="tab-receive" class="tab-pane">
+        <div class="card">
+          <div class="card-header">
+            <h2>Receive & Decrypt File (AES-256-GCM)</h2>
+            <p>Enter the 6-digit Transfer Code or drop an encrypted (.sfswlan) file, then decrypt using your passphrase.</p>
+          </div>
+
+          <!-- Code or File selection -->
+          <div class="receive-methods">
+            <div class="input-group">
+              <label for="receiveCode">Enter 6-Digit Transfer Code:</label>
+              <div class="input-with-button">
+                <input type="text" id="receiveCode" placeholder="e.g. 748291" maxlength="10">
+                <button type="button" class="btn-primary" id="btnFetchCode">Fetch File</button>
+              </div>
+            </div>
+
+            <div class="divider"><span>OR DROP ENCRYPTED FILE</span></div>
+
+            <div class="dropzone dropzone-sm" id="receiveDropzone">
+              <input type="file" id="encryptedFileInput" class="file-input-hidden">
+              <p>Drop encrypted <code>.sfswlan</code> file here or <button type="button" class="btn-link" id="btnBrowseEnc">browse</button></p>
+              <span id="encSelectedName" class="file-info-badge" style="display: none;"></span>
+            </div>
+          </div>
+
+          <!-- Receiver Authentication Key -->
+          <div class="form-section">
+            <div class="input-group">
+              <label for="receivePassphrase">Authentication Key (for AES-256-GCM Decryption):</label>
+              <div class="input-with-button">
+                <input type="password" id="receivePassphrase" placeholder="Enter passphrase..." value="AlanJaisonWLAN2026">
+                <button type="button" class="btn-ghost" id="toggleRecvPass">👁</button>
+              </div>
+            </div>
+
+            <button type="button" class="btn-success btn-block" id="btnDecrypt" disabled>
+              🔓 Decrypt (AES-256-GCM) & Verify SHA-256
+            </button>
+          </div>
+
+          <!-- Decryption & Delivery Confirmation -->
+          <div id="decryptResultCard" class="result-card success" style="display: none;">
+            <div class="result-header">
+              <span class="result-icon">✓</span>
+              <div>
+                <h4>✓ Cryptographic Delivery Confirmed!</h4>
+                <p>AES-256-GCM Authenticated Decryption Successful</p>
+              </div>
+            </div>
+            <div class="result-details">
+              <div class="detail-row">
+                <span>Decrypted File:</span>
+                <strong id="decryptedFileName">document.pdf</strong>
+              </div>
+              <div class="detail-row">
+                <span>File Size:</span>
+                <span id="decryptedFileSize">0 KB</span>
+              </div>
+              <div class="detail-row">
+                <span>SHA-256 Match:</span>
+                <span class="badge badge-success">✓ 100% BIT-FOR-BIT MATCH</span>
+              </div>
+              <div class="detail-row">
+                <span>Verified Digest:</span>
+                <code id="decryptedShaDisplay" class="hash-code-sm"></code>
+              </div>
+              <button type="button" class="btn-primary btn-block" id="btnDownloadDecrypted" style="margin-top: 14px;">
+                ⬇ Download Decrypted File
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 3: SHA-256 INTEGRITY TOOL -->
+      <section id="tab-integrity" class="tab-pane">
+        <div class="card">
+          <div class="card-header">
+            <h2>SHA-256 Cryptographic Integrity Tool</h2>
+            <p>Compute and verify the SHA-256 checksum of any file to verify data integrity.</p>
+          </div>
+
+          <div class="dropzone" id="hashDropzone">
+            <input type="file" id="hashFileInput" class="file-input-hidden">
+            <div class="dropzone-content">
+              <div class="drop-icon">🔍</div>
+              <h3>Select any file to calculate SHA-256 hash</h3>
+              <p><button type="button" class="btn-link" id="btnBrowseHash">Browse files</button></p>
+              <div id="hashFileInfo" class="file-info-badge" style="display: none;"></div>
+            </div>
+          </div>
+
+          <div class="form-section">
+            <div class="hash-preview-box">
+              <span class="hash-label">Calculated SHA-256 Digest:</span>
+              <code id="toolCalculatedHash" class="hash-code">Awaiting file selection...</code>
+            </div>
+
+            <div class="input-group" style="margin-top: 16px;">
+              <label for="toolExpectedHash">Compare Against Expected SHA-256 Hash:</label>
+              <input type="text" id="toolExpectedHash" placeholder="Paste expected 64-character hex hash...">
+            </div>
+
+            <button type="button" class="btn-primary" id="btnVerifyHashMatch">Compare Hashes</button>
+
+            <div id="toolHashResult" class="hash-result-box" style="display: none;"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 4: PROJECT ABSTRACT -->
+      <section id="tab-abstract" class="tab-pane">
+        <div class="card abstract-card">
+          <div class="card-header">
+            <h2>SECURE FILE SHARING OVER WLAN</h2>
+            <div class="author-badge">Project Abstract • Submitted by: <strong>ALAN JAISON</strong></div>
+          </div>
+          
+          <div class="abstract-content">
+            <h3>Abstract</h3>
+            <p>
+              Secure File Sharing over WLAN is a software application designed to enable secure and efficient file transfer between devices connected to the same Wireless Local Area Network (WLAN). The system eliminates the need for external internet-based file-sharing services by allowing devices on the same network to communicate through a local client-server architecture. Users can authenticate before initiating a transfer, select files for sharing, and transmit them securely over the WLAN.
+            </p>
+            <p>
+              To enhance security, the proposed system employs AES-256-GCM encryption to protect file contents during transmission. At the receiving end, the encrypted data is decrypted using the appropriate key. SHA-256 hashing can additionally be used to verify file integrity by comparing the hash values of the original and received files. The application provides a simple interface for connecting to the receiver, selecting files, monitoring transfers, and confirming successful delivery. The project demonstrates the practical application of WLAN communication, client-server networking, authentication, encryption, and data integrity in mobile computing.
+            </p>
+
+            <div class="keywords-box">
+              <strong>Keywords:</strong> WLAN, Secure File Transfer, Client-Server Architecture, Authentication, AES-256-GCM, SHA-256, Data Integrity, Mobile Computing.
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="app-footer">
+      <div>Secure File Sharing over WLAN • Submitted by: <strong>ALAN JAISON</strong></div>
+      <div>Compatible with Local WLAN & Vercel Cloud Deployment</div>
+    </footer>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
+
