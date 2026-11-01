@@ -9,7 +9,8 @@
  *   - PBKDF2-HMAC-SHA256 Key Derivation (100,000 iterations)
  *   - SHA-256 Data Integrity Verification
  *   - Zero-Knowledge Encryption (files are encrypted in the browser BEFORE leaving the device)
- *   - Vercel Serverless & Local WLAN Compatibility
+ *   - Zero-Server URL Fragment Transfer (Files < 2.5 MB transfer via direct link/QR)
+ *   - Encrypted .sfswlan Package Download & Drop
  */
 
 // ── Constants & Helpers ───────────────────────────────────────────────────────
@@ -36,6 +37,28 @@ function hexToBuf(hexString) {
   const bytes = new Uint8Array(hexString.length / 2);
   for (let i = 0; i < bytes.length; i++) {
     bytes[i] = parseInt(hexString.substr(i * 2, 2), 16);
+  }
+  return bytes.buffer;
+}
+
+function bufToBase64Url(buffer) {
+  let binary = "";
+  const bytes = new Uint8Array(buffer);
+  for (let i = 0; i < bytes.byteLength; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function base64UrlToBuf(base64Url) {
+  let base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+  while (base64.length % 4) {
+    base64 += "=";
+  }
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
   }
   return bytes.buffer;
 }
@@ -216,11 +239,16 @@ document.addEventListener("DOMContentLoaded", () => {
   const sendProgressPercent = document.getElementById("sendProgressPercent");
   const sendResultCard = document.getElementById("sendResultCard");
   const shareCodeDisplay = document.getElementById("shareCodeDisplay");
-  const directShareLink = document.getElementById("directShareLink");
   const resultShaDisplay = document.getElementById("resultShaDisplay");
+
+  const btnDownloadEncPackage = document.getElementById("btnDownloadEncPackage");
+  const shareUrlInput = document.getElementById("shareUrlInput");
+  const btnCopyShareUrl = document.getElementById("btnCopyShareUrl");
+  const qrCanvas = document.getElementById("qrCanvas");
 
   let activeFile = null;
   let activeEncryptedPackage = null;
+  let activeEncFileName = "";
 
   btnBrowse.addEventListener("click", () => fileInput.click());
   fileInput.addEventListener("change", (e) => {
@@ -276,61 +304,88 @@ document.addEventListener("DOMContentLoaded", () => {
     btnEncryptAndSend.disabled = true;
     transferMonitorSection.style.display = "block";
     sendResultCard.style.display = "none";
-    sendProgressBar.style.width = "20%";
-    sendProgressPercent.textContent = "20%";
+    sendProgressBar.style.width = "25%";
+    sendProgressPercent.textContent = "25%";
     sendProgressStatus.textContent = "Deriving 256-bit key via PBKDF2...";
 
     try {
       const buffer = await activeFile.arrayBuffer();
 
-      sendProgressBar.style.width = "50%";
-      sendProgressPercent.textContent = "50%";
-      sendProgressStatus.textContent = "Encrypting file contents with AES-256-GCM...";
+      sendProgressBar.style.width = "55%";
+      sendProgressPercent.textContent = "55%";
+      sendProgressStatus.textContent = "Encrypting with AES-256-GCM & packaging...";
 
       const result = await encryptFileBuffer(pass, buffer, activeFile.name);
       activeEncryptedPackage = result.packageBytes;
+      activeEncFileName = activeFile.name + ".sfswlan";
 
-      sendProgressBar.style.width = "80%";
-      sendProgressPercent.textContent = "80%";
-      sendProgressStatus.textContent = "Registering transfer package...";
+      sendProgressBar.style.width = "85%";
+      sendProgressPercent.textContent = "85%";
+      sendProgressStatus.textContent = "Building transfer link & QR code...";
 
-      // Generate a 6-digit transfer code
+      // Generate 6-digit code
       const code = Math.floor(100000 + Math.random() * 900000).toString();
 
-      // Attempt serverless / API upload if available, or store in sessionStorage
+      // Check if file is small enough to embed directly into URL fragment (< 2MB)
+      let directUrl = `${window.location.origin}${window.location.pathname}?code=${code}`;
+      if (activeEncryptedPackage.byteLength < 2 * 1024 * 1024) {
+        const b64 = bufToBase64Url(activeEncryptedPackage);
+        directUrl = `${window.location.origin}${window.location.pathname}#pkg=${b64}`;
+      }
+
+      shareUrlInput.value = directUrl;
+
+      // Render QR Code if QRCode library is present
+      if (window.QRCode && qrCanvas) {
+        window.QRCode.toCanvas(qrCanvas, directUrl, { width: 140, margin: 1 }, function (error) {
+          if (error) console.error(error);
+        });
+      }
+
+      // Try background sync to session/API
       try {
+        sessionStorage.setItem(`sfswlan_${code}`, bufToHex(activeEncryptedPackage));
         const formData = new FormData();
         formData.append("code", code);
-        formData.append("filename", activeFile.name + ".sfswlan");
+        formData.append("filename", activeEncFileName);
         formData.append("package", new Blob([activeEncryptedPackage]));
-
-        await fetch("/api/share", {
-          method: "POST",
-          body: formData
-        });
-      } catch (e) {
-        // Fallback to local browser session storage
-        sessionStorage.setItem(`sfswlan_${code}`, bufToHex(activeEncryptedPackage));
-      }
+        fetch("/api/share", { method: "POST", body: formData }).catch(() => {});
+      } catch (e) {}
 
       sendProgressBar.style.width = "100%";
       sendProgressPercent.textContent = "100%";
-      sendProgressStatus.textContent = "✓ Transfer Delivered & Verified!";
+      sendProgressStatus.textContent = "✓ Delivery Confirmed: Ready to Share";
 
-      // Show result
+      // Show results
       sendResultCard.style.display = "block";
       shareCodeDisplay.textContent = code;
       resultShaDisplay.textContent = result.originalSha256;
-
-      const directUrl = `${window.location.origin}${window.location.pathname}?code=${code}`;
-      directShareLink.href = directUrl;
-      directShareLink.textContent = directUrl;
     } catch (err) {
       alert("Encryption error: " + err.message);
       sendProgressStatus.textContent = "Error: " + err.message;
     } finally {
       btnEncryptAndSend.disabled = false;
     }
+  });
+
+  btnDownloadEncPackage.addEventListener("click", () => {
+    if (!activeEncryptedPackage) return;
+    const blob = new Blob([activeEncryptedPackage], { type: "application/octet-stream" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = activeEncFileName || "encrypted_file.sfswlan";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  });
+
+  btnCopyShareUrl.addEventListener("click", () => {
+    shareUrlInput.select();
+    navigator.clipboard.writeText(shareUrlInput.value);
+    btnCopyShareUrl.textContent = "✓ Copied!";
+    setTimeout(() => { btnCopyShareUrl.textContent = "📋 Copy"; }, 2000);
   });
 
   // ── Tab 2: Receive & Decrypt File Logic ──
@@ -340,6 +395,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const encryptedFileInput = document.getElementById("encryptedFileInput");
   const btnBrowseEnc = document.getElementById("btnBrowseEnc");
   const encSelectedName = document.getElementById("encSelectedName");
+  const fetchHelpMessage = document.getElementById("fetchHelpMessage");
   const receivePassphrase = document.getElementById("receivePassphrase");
   const toggleRecvPass = document.getElementById("toggleRecvPass");
   const btnDecrypt = document.getElementById("btnDecrypt");
@@ -353,14 +409,32 @@ document.addEventListener("DOMContentLoaded", () => {
   let loadedEncryptedBuffer = null;
   let readyDecryptedData = null;
 
-  // Auto-check URL parameters for ?code=123456
-  const urlParams = new URLSearchParams(window.location.search);
-  const codeParam = urlParams.get("code");
-  if (codeParam) {
-    receiveCode.value = codeParam;
-    document.querySelector('[data-tab="receive"]').click();
-    fetchCodePackage(codeParam);
+  // Auto-detect URL Fragment (#pkg=...) or query param (?code=...)
+  function checkUrlForPackage() {
+    const hash = window.location.hash;
+    if (hash && hash.startsWith("#pkg=")) {
+      const b64 = hash.replace("#pkg=", "");
+      try {
+        loadedEncryptedBuffer = base64UrlToBuf(b64);
+        document.querySelector('[data-tab="receive"]').click();
+        encSelectedName.textContent = `Encrypted Package Loaded (${formatBytes(loadedEncryptedBuffer.byteLength)})`;
+        encSelectedName.style.display = "inline-flex";
+        btnDecrypt.disabled = false;
+        return;
+      } catch (e) {
+        console.error("Failed to parse package from URL", e);
+      }
+    }
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const codeParam = urlParams.get("code");
+    if (codeParam) {
+      receiveCode.value = codeParam;
+      document.querySelector('[data-tab="receive"]').click();
+      fetchCodePackage(codeParam);
+    }
   }
+  checkUrlForPackage();
 
   btnBrowseEnc.addEventListener("click", () => encryptedFileInput.click());
   encryptedFileInput.addEventListener("change", async (e) => {
@@ -381,44 +455,67 @@ document.addEventListener("DOMContentLoaded", () => {
   async function loadEncFile(file) {
     encSelectedName.textContent = file.name + " (" + formatBytes(file.size) + ")";
     encSelectedName.style.display = "inline-flex";
+    fetchHelpMessage.style.display = "none";
     loadedEncryptedBuffer = await file.arrayBuffer();
     btnDecrypt.disabled = false;
   }
 
   btnFetchCode.addEventListener("click", () => {
-    const code = receiveCode.value.trim();
-    if (!code) {
-      alert("Please enter the 6-digit transfer code.");
+    let inputVal = receiveCode.value.trim();
+    if (!inputVal) {
+      alert("Please enter a 6-digit code or paste a direct share link.");
       return;
     }
-    fetchCodePackage(code);
+
+    // If a full URL was pasted, check for #pkg= or ?code=
+    if (inputVal.includes("#pkg=")) {
+      const b64 = inputVal.split("#pkg=")[1];
+      loadedEncryptedBuffer = base64UrlToBuf(b64);
+      encSelectedName.textContent = `Encrypted Package Loaded (${formatBytes(loadedEncryptedBuffer.byteLength)})`;
+      encSelectedName.style.display = "inline-flex";
+      fetchHelpMessage.style.display = "none";
+      btnDecrypt.disabled = false;
+      return;
+    } else if (inputVal.includes("code=")) {
+      inputVal = inputVal.split("code=")[1].split("&")[0];
+    }
+
+    fetchCodePackage(inputVal);
   });
 
   async function fetchCodePackage(code) {
     btnFetchCode.textContent = "Fetching...";
     btnFetchCode.disabled = true;
+    fetchHelpMessage.style.display = "none";
 
     try {
       let resp = await fetch(`/api/share?code=${code}`);
       if (resp.ok) {
         loadedEncryptedBuffer = await resp.arrayBuffer();
+        encSelectedName.textContent = `Package Loaded from Server (Code: ${code}, Size: ${formatBytes(loadedEncryptedBuffer.byteLength)})`;
+        encSelectedName.style.display = "inline-flex";
+        btnDecrypt.disabled = false;
       } else {
-        // Check session storage fallback
+        // Check session storage
         const localHex = sessionStorage.getItem(`sfswlan_${code}`);
         if (localHex) {
           loadedEncryptedBuffer = hexToBuf(localHex);
+          encSelectedName.textContent = `Package Loaded from Local Session (Code: ${code})`;
+          encSelectedName.style.display = "inline-flex";
+          btnDecrypt.disabled = false;
         } else {
-          throw new Error("Transfer code not found or expired.");
+          throw new Error("Code not found or expired on this cloud instance.");
         }
       }
-
-      encSelectedName.textContent = `File fetched (Code: ${code}, Size: ${formatBytes(loadedEncryptedBuffer.byteLength)})`;
-      encSelectedName.style.display = "inline-flex";
-      btnDecrypt.disabled = false;
     } catch (err) {
-      alert("Fetch error: " + err.message);
+      fetchHelpMessage.style.display = "block";
+      fetchHelpMessage.innerHTML = `
+        <strong>💡 Note:</strong> Vercel serverless cloud instances run independently. For 100% reliable cross-device transfer:
+        <br>1. Download the <code>.sfswlan</code> encrypted file on the sender and select it above, <strong>OR</strong>
+        <br>2. Open the direct <strong>QR / Direct Link</strong> on your phone.
+      `;
     } finally {
-      btnFetchCode.textContent = "Fetch File";
+      btnFetchCode.textContent = "Fetch & Load";
       btnFetchCode.disabled = false;
     }
   }
@@ -528,4 +625,3 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 });
-

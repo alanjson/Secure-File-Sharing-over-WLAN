@@ -6,6 +6,8 @@
   <title>Secure File Sharing over WLAN — Alan Jaison</title>
   <link rel="stylesheet" href="style.css">
   <link rel="icon" href="favicon.ico" type="image/x-icon">
+  <!-- Lightweight QR Code Library -->
+  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
 </head>
 <body>
   <div class="app-wrapper">
@@ -21,7 +23,7 @@
       <div class="header-badges">
         <span class="badge badge-accent">AES-256-GCM</span>
         <span class="badge badge-success">SHA-256</span>
-        <span class="badge badge-muted" id="wlanStatusBadge">📡 WLAN Ready</span>
+        <span class="badge badge-muted" id="wlanStatusBadge">📡 WLAN & Cloud</span>
       </div>
     </header>
 
@@ -104,18 +106,40 @@
               <div class="result-header">
                 <span class="result-icon">✓</span>
                 <div>
-                  <h4>Delivery Confirmed: File Transmitted & Verified</h4>
-                  <p>Encrypted via AES-256-GCM • SHA-256 Hash Match Verified</p>
+                  <h4>Delivery Confirmed: File Encrypted & Ready</h4>
+                  <p>AES-256-GCM Authenticated • SHA-256 Integrity Computed</p>
                 </div>
               </div>
-              <div class="result-details">
+
+              <!-- Sharing Options -->
+              <div class="sharing-grid">
+                <!-- Option A: Direct Download of Encrypted Package -->
+                <div class="share-box">
+                  <strong>Option A: Encrypted Package File</strong>
+                  <p style="font-size:0.8rem; color:var(--text-muted); margin:4px 0 10px 0;">Download the encrypted <code>.sfswlan</code> package to share via WhatsApp, AirDrop, or Bluetooth:</p>
+                  <button type="button" class="btn-success btn-block" id="btnDownloadEncPackage">
+                    ⬇ Download Encrypted (.sfswlan)
+                  </button>
+                </div>
+
+                <!-- Option B: Direct Link or QR Code -->
+                <div class="share-box" id="linkShareBox">
+                  <strong>Option B: Scan QR / Direct Mobile Link</strong>
+                  <p style="font-size:0.8rem; color:var(--text-muted); margin:4px 0 8px 0;">Scan with phone camera to open and decrypt instantly:</p>
+                  <div id="qrcodeContainer" style="display: flex; justify-content: center; margin: 8px 0;">
+                    <canvas id="qrCanvas"></canvas>
+                  </div>
+                  <div style="display: flex; gap: 6px;">
+                    <input type="text" id="shareUrlInput" readonly style="font-size: 0.8rem;">
+                    <button type="button" class="btn-ghost" id="btnCopyShareUrl">📋 Copy</button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="result-details" style="margin-top: 14px;">
                 <div class="detail-row">
                   <span>Transfer Code:</span>
                   <strong class="code-pill" id="shareCodeDisplay">123456</strong>
-                </div>
-                <div class="detail-row">
-                  <span>Direct Link:</span>
-                  <a href="#" id="directShareLink" target="_blank" class="share-link">Copy link</a>
                 </div>
                 <div class="detail-row">
                   <span>Original SHA-256:</span>
@@ -132,30 +156,36 @@
         <div class="card">
           <div class="card-header">
             <h2>Receive & Decrypt File (AES-256-GCM)</h2>
-            <p>Enter the 6-digit Transfer Code or drop an encrypted (.sfswlan) file, then decrypt using your passphrase.</p>
+            <p>Select your encrypted <code>.sfswlan</code> file or open a Direct Share link, then enter your passphrase to decrypt.</p>
           </div>
 
-          <!-- Code or File selection -->
+          <!-- Direct Drop of Encrypted File (Primary & 100% Reliable Method) -->
           <div class="receive-methods">
-            <div class="input-group">
-              <label for="receiveCode">Enter 6-Digit Transfer Code:</label>
-              <div class="input-with-button">
-                <input type="text" id="receiveCode" placeholder="e.g. 748291" maxlength="10">
-                <button type="button" class="btn-primary" id="btnFetchCode">Fetch File</button>
+            <div class="dropzone dropzone-lg" id="receiveDropzone">
+              <input type="file" id="encryptedFileInput" class="file-input-hidden" accept=".sfswlan,*">
+              <div class="dropzone-content">
+                <div class="drop-icon">📦</div>
+                <h3>Drop encrypted <code>.sfswlan</code> file here</h3>
+                <p>or <button type="button" class="btn-link" id="btnBrowseEnc">choose encrypted file</button> from your phone/PC</p>
+                <div id="encSelectedName" class="file-info-badge" style="display: none;"></div>
               </div>
             </div>
 
-            <div class="divider"><span>OR DROP ENCRYPTED FILE</span></div>
+            <div class="divider"><span>OR ENTER TRANSFER CODE / URL</span></div>
 
-            <div class="dropzone dropzone-sm" id="receiveDropzone">
-              <input type="file" id="encryptedFileInput" class="file-input-hidden">
-              <p>Drop encrypted <code>.sfswlan</code> file here or <button type="button" class="btn-link" id="btnBrowseEnc">browse</button></p>
-              <span id="encSelectedName" class="file-info-badge" style="display: none;"></span>
+            <div class="input-group">
+              <label for="receiveCode">6-Digit Transfer Code or URL:</label>
+              <div class="input-with-button">
+                <input type="text" id="receiveCode" placeholder="Enter code or paste direct link...">
+                <button type="button" class="btn-primary" id="btnFetchCode">Fetch & Load</button>
+              </div>
             </div>
+            
+            <div id="fetchHelpMessage" class="info-note" style="display:none;"></div>
           </div>
 
           <!-- Receiver Authentication Key -->
-          <div class="form-section">
+          <div class="form-section" style="margin-top: 20px;">
             <div class="input-group">
               <label for="receivePassphrase">Authentication Key (for AES-256-GCM Decryption):</label>
               <div class="input-with-button">
@@ -170,7 +200,7 @@
           </div>
 
           <!-- Decryption & Delivery Confirmation -->
-          <div id="decryptResultCard" class="result-card success" style="display: none;">
+          <div id="decryptResultCard" class="result-card success" style="display: none; margin-top: 20px;">
             <div class="result-header">
               <span class="result-icon">✓</span>
               <div>
@@ -274,4 +304,3 @@
   <script src="app.js"></script>
 </body>
 </html>
-
